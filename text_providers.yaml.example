@@ -2,10 +2,18 @@
 # 复制此文件为 text_providers.yaml 并填写你的配置
 
 # 当前激活的服务商（填写下方 providers 中的名称）
-active_provider: openai
+active_provider: aihubmix
 
 # 服务商列表
 providers:
+  # AiHubMix 转发（OpenAI 兼容）
+  aihubmix:
+    type: openai_compatible
+    api_key: sk-xxxxxxxxxxxxxxxxxxxx  # AiHubMix 生成的密钥
+    base_url: https://aihubmix.com/v1  # 可写成 https://aihubmix.com，均可
+    endpoint_type: /v1/chat/completions   # 需要带 /v1 前缀
+    model: gpt-4o-mini                 # 可换任意支持的模型 ID
+
   # OpenAI 官方 API
   openai:
     type: openai_compatible

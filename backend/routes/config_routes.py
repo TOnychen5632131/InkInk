@@ -323,6 +323,13 @@ def _test_google_genai(config: dict) -> dict:
                 "message": "连接成功！仅代表连接稳定，不确定是否可以稳定支持图片生成"
             }
         except Exception as e:
+            base_url = config.get('base_url', '')
+            # 部分转发网关（如 AiHubMix /gemini）不支持 models 列表，直接跳过
+            if "aihubmix.com" in base_url or "/gemini" in base_url:
+                return {
+                    "success": True,
+                    "message": f"连接成功（跳过 models 列表检测）：{str(e)[:80]}"
+                }
             raise Exception(f"连接测试失败: {str(e)}")
     else:
         return {

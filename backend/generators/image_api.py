@@ -40,6 +40,8 @@ class ImageApiGenerator(ImageGeneratorBase):
         self.model = config.get('model', 'default-model')
         self.default_aspect_ratio = config.get('default_aspect_ratio', '3:4')
         self.image_size = config.get('image_size', '4K')
+        self.use_modalities = config.get('use_modalities', False)
+        self.temperature = config.get('temperature', 1.0)
 
         # 支持自定义端点路径
         endpoint_type = config.get('endpoint_type', '/v1/images/generations')
@@ -224,6 +226,7 @@ class ImageApiGenerator(ImageGeneratorBase):
     ) -> bytes:
         """通过 /v1/chat/completions 端点生成图片（如即梦 API）"""
         import re
+        import base64
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -260,8 +263,12 @@ class ImageApiGenerator(ImageGeneratorBase):
             "model": model,
             "messages": [{"role": "user", "content": user_content}],
             "max_tokens": 4096,
-            "temperature": 1.0
+            "temperature": self.temperature,
         }
+
+        # Gemini 2.5 图像（nano-banana）需要 modalities=["text","image"]
+        if self.use_modalities or "gemini-2.5-flash-image-preview" in model:
+            payload["modalities"] = ["text", "image"]
 
         api_url = f"{self.base_url}{self.endpoint_type}"
         logger.info(f"Chat API 生成图片: {api_url}, model={model}")
@@ -302,35 +309,61 @@ class ImageApiGenerator(ImageGeneratorBase):
         # 解析响应
         if "choices" in result and len(result["choices"]) > 0:
             choice = result["choices"][0]
-            if "message" in choice and "content" in choice["message"]:
-                content = choice["message"]["content"]
+            message = choice.get("message", {})
 
-                if isinstance(content, str):
-                    # Markdown 图片链接: ![xxx](url)
-                    pattern = r'!\[.*?\]\((https?://[^\s\)]+)\)'
-                    urls = re.findall(pattern, content)
-                    if urls:
-                        logger.info(f"从 Markdown 提取到 {len(urls)} 张图片，下载第一张...")
-                        return self._download_image(urls[0])
+            # 1) multi_mod_content / inline_data（Gemini 2.5 返回）
+            multi_parts = message.get("multi_mod_content") or message.get("multi_modal_content")
+            if multi_parts and isinstance(multi_parts, list):
+                for part in multi_parts:
+                    if not isinstance(part, dict):
+                        continue
+                    inline = part.get("inline_data") or part.get("inlineData")
+                    if inline and inline.get("data"):
+                        logger.info("从 multi_mod_content 提取到图片数据")
+                        return base64.b64decode(inline["data"])
 
-                    # Markdown 图片 Base64: ![xxx](data:image/...)
-                    base64_pattern = r'!\[.*?\]\((data:image\/[^;]+;base64,[^\s\)]+)\)'
-                    base64_urls = re.findall(base64_pattern, content)
-                    if base64_urls:
-                        logger.info("从 Markdown 提取到 Base64 图片数据")
-                        base64_data = base64_urls[0].split(",")[1]
-                        return base64.b64decode(base64_data)
+            # 2) message.content 列表形式（OpenAI 兼容多模态返回）
+            content_field = message.get("content")
+            if isinstance(content_field, list):
+                for part in content_field:
+                    if not isinstance(part, dict):
+                        continue
+                    if part.get("type") == "image_url":
+                        image_url = part.get("image_url", {}).get("url")
+                        if image_url:
+                            if image_url.startswith("data:image"):
+                                logger.info("从 content.data URL 提取图片数据")
+                                return base64.b64decode(image_url.split(",", 1)[1])
+                            return self._download_image(image_url)
+                    inline = part.get("inline_data") or part.get("inlineData")
+                    if inline and inline.get("data"):
+                        logger.info("从 content.inline_data 提取图片数据")
+                        return base64.b64decode(inline["data"])
 
-                    # 纯 Base64 data URL
-                    if content.startswith("data:image"):
-                        logger.info("检测到 Base64 图片数据")
-                        base64_data = content.split(",")[1]
-                        return base64.b64decode(base64_data)
+            # 3) 字符串内容中的 Markdown / data URL / 直接 URL
+            if isinstance(content_field, str):
+                content = content_field
+                pattern = r'!\[.*?\]\((https?://[^\s\)]+)\)'
+                urls = re.findall(pattern, content)
+                if urls:
+                    logger.info(f"从 Markdown 提取到 {len(urls)} 张图片，下载第一张...")
+                    return self._download_image(urls[0])
 
-                    # 纯 URL
-                    if content.startswith("http://") or content.startswith("https://"):
-                        logger.info("检测到图片 URL")
-                        return self._download_image(content.strip())
+                base64_pattern = r'!\[.*?\]\((data:image\/[^;]+;base64,[^\s\)]+)\)'
+                base64_urls = re.findall(base64_pattern, content)
+                if base64_urls:
+                    logger.info("从 Markdown 提取到 Base64 图片数据")
+                    base64_data = base64_urls[0].split(",")[1]
+                    return base64.b64decode(base64_data)
+
+                if content.startswith("data:image"):
+                    logger.info("检测到 Base64 图片数据")
+                    base64_data = content.split(",")[1]
+                    return base64.b64decode(base64_data)
+
+                if content.startswith("http://") or content.startswith("https://"):
+                    logger.info("检测到图片 URL")
+                    return self._download_image(content.strip())
 
         raise Exception(
             "❌ 无法从 Chat API 响应中提取图片数据\n\n"

@@ -2,10 +2,33 @@
 # 复制此文件为 image_providers.yaml 并填写你的配置
 
 # 当前激活的服务商（填写下方 providers 中的名称）
-active_provider: gemini
+active_provider: nano_banana
 
 # 服务商列表
 providers:
+  # Gemini 2.5 Flash 图像（nano-banana，AiHubMix 转发）
+  nano_banana:
+    type: image_api
+    api_key: sk-xxxxxxxxxxxxxxxxxxxx  # 替换为你的密钥
+    base_url: https://aihubmix.com
+    endpoint_type: /v1/chat/completions
+    model: gemini-2.5-flash-image-preview
+    default_aspect_ratio: "1:1"       # 支持 1:1 / 3:4 / 4:3 / 9:16 / 16:9
+    high_concurrency: false
+    use_modalities: true
+    temperature: 0.7
+
+  # 通过转发网关调用 Imagen（示例：AiHubMix）
+  imagen_proxy:
+    type: google_genai
+    api_key: sk-xxxxxxxxxxxxxxxxxxxx  # 替换为你的密钥
+    base_url: https://aihubmix.com/gemini
+    model: imagen-4.0-fast-generate-001
+    default_aspect_ratio: "1:1"       # 支持 1:1 / 3:4 / 4:3 / 9:16 / 16:9
+    person_generation: ALLOW_ADULT    # DONT_ALLOW / ALLOW_ADULT
+    use_generate_images_api: true     # 走 generate_images 接口
+    high_concurrency: false           # 转发网关通常不建议开启
+
   # Google Gemini 图片生成（推荐）
   gemini:
     type: google_genai

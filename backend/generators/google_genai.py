@@ -356,6 +356,13 @@ class GoogleGenAIGenerator(ImageGeneratorBase):
         # Vertex AI 需要 OAuth2 认证，不支持 API Key
         self.is_vertexai = False
 
+        # 是否走 generate_images 接口（Imagen / 转发网关）
+        self.use_generate_images_api = bool(
+            config.get("use_generate_images_api")
+            or (config.get("model", "") or "").startswith("imagen-")
+            or ("aihubmix" in (config.get("base_url") or ""))
+        )
+
         # 如果有 base_url，则配置 http_options
         if self.config.get('base_url'):
             logger.debug(f"  使用自定义 base_url: {self.config['base_url']}")
@@ -405,6 +412,15 @@ class GoogleGenAIGenerator(ImageGeneratorBase):
         Returns:
             图片二进制数据
         """
+        # Imagen / 转发网关：直接调用 generate_images
+        if self.use_generate_images_api or model.startswith("imagen-"):
+            logger.info(f"Google GenAI generate_images 调用: model={model}, aspect_ratio={aspect_ratio}")
+            return self._generate_via_images_api(
+                prompt=prompt,
+                model=model,
+                aspect_ratio=aspect_ratio
+            )
+
         logger.info(f"Google GenAI 生成图片: model={model}, aspect_ratio={aspect_ratio}")
         logger.debug(f"  prompt 长度: {len(prompt)} 字符, 有参考图: {reference_image is not None}")
 
@@ -502,3 +518,44 @@ class GoogleGenAIGenerator(ImageGeneratorBase):
     def get_supported_aspect_ratios(self) -> list:
         """获取支持的宽高比"""
         return ["1:1", "3:4", "4:3", "16:9", "9:16"]
+
+    def _generate_via_images_api(self, prompt: str, model: str, aspect_ratio: str) -> bytes:
+        """
+        通过 generate_images 接口生成图片（适配 Imagen / aihubmix 转发）
+        """
+        config_kwargs = {
+            "number_of_images": 1,
+            "aspect_ratio": aspect_ratio,
+        }
+
+        # 可选的人像生成功能
+        if self.config.get("person_generation"):
+            config_kwargs["person_generation"] = self.config["person_generation"]
+
+        # 安全设置在 generate_images 不受支持，保持默认
+        response = self.client.models.generate_images(
+            model=model,
+            prompt=prompt,
+            config=types.GenerateImagesConfig(**config_kwargs),
+        )
+
+        if not response or not getattr(response, "generated_images", None):
+            raise ValueError(
+                "❌ 图片生成失败：generate_images 返回为空\n"
+                "可能原因：模型未启用、提示词被过滤、或网关配置有误"
+            )
+
+        first_image = response.generated_images[0]
+        # Imagen 返回 image.image_bytes；部分转发可能放在 inline_data
+        if hasattr(first_image, "image") and first_image.image and getattr(first_image.image, "image_bytes", None):
+            logger.info(f"✅ generate_images 图片生成成功: {len(first_image.image.image_bytes)} bytes")
+            return first_image.image.image_bytes
+
+        if hasattr(first_image, "inline_data") and first_image.inline_data and getattr(first_image.inline_data, "data", None):
+            logger.info(f"✅ generate_images 图片生成成功(Inline): {len(first_image.inline_data.data)} bytes")
+            return first_image.inline_data.data
+
+        raise ValueError(
+            "❌ 图片生成失败：未在响应中找到图片二进制数据\n"
+            "请检查模型返回格式或网关兼容性"
+        )
