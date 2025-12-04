@@ -2,6 +2,10 @@ import axios from 'axios'
 
 const API_BASE_URL = '/api'
 
+function randomId(prefix: string) {
+  return `${prefix}_${Math.random().toString(16).slice(2)}`
+}
+
 export interface Page {
   index: number
   type: 'cover' | 'content' | 'summary'
@@ -35,38 +39,49 @@ export async function generateOutline(
   topic: string,
   images?: File[]
 ): Promise<OutlineResponse & { has_images?: boolean }> {
-  // 如果有图片，使用 FormData
+  let imagesBase64: string[] | undefined = undefined
   if (images && images.length > 0) {
-    const formData = new FormData()
-    formData.append('topic', topic)
-    images.forEach((file) => {
-      formData.append('images', file)
-    })
-
-    const response = await axios.post<OutlineResponse & { has_images?: boolean }>(
-      `${API_BASE_URL}/outline`,
-      formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      }
+    imagesBase64 = await Promise.all(
+      images.map(
+        (file) =>
+          new Promise<string>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result as string)
+            reader.onerror = reject
+            reader.readAsDataURL(file)
+          })
+      )
     )
-    return response.data
   }
 
-  // 无图片，使用 JSON
-  const response = await axios.post<OutlineResponse>(`${API_BASE_URL}/outline`, {
-    topic
-  })
-  return response.data
+  const response = await axios.post<OutlineResponse & { has_images?: boolean }>(
+    `${API_BASE_URL}/generateText`,
+    {
+      topic,
+      images: imagesBase64
+    }
+  )
+  const data = response.data
+  if ((!data.pages || data.pages.length === 0) && data.outline) {
+    const lines = data.outline
+      .split(/\n+/)
+      .map(l => l.trim())
+      .filter(Boolean)
+    const pages: Page[] = lines.map((text, idx) => ({
+      index: idx,
+      type: idx === 0 ? 'cover' : (idx === lines.length - 1 ? 'summary' : 'content'),
+      content: text
+    }))
+    data.pages = pages
+  }
+  return data
 }
 
 // 获取图片 URL（新格式：task_id/filename）
 // thumbnail 参数：true=缩略图（默认），false=原图
 export function getImageUrl(taskId: string, filename: string, thumbnail: boolean = true): string {
-  const thumbParam = thumbnail ? '?thumbnail=true' : '?thumbnail=false'
-  return `${API_BASE_URL}/images/${taskId}/${filename}${thumbParam}`
+  // 前端直接使用完整 URL 或 data URL；这里保留兼容形式
+  return filename
 }
 
 // 重新生成图片（即使成功的也可以重新生成）
@@ -79,14 +94,17 @@ export async function regenerateImage(
     userTopic?: string
   }
 ): Promise<{ success: boolean; index: number; image_url?: string; error?: string }> {
-  const response = await axios.post(`${API_BASE_URL}/regenerate`, {
-    task_id: taskId,
-    page,
-    use_reference: useReference,
-    full_outline: context?.fullOutline,
+  // 直接调用生成接口
+  const result = await axios.post(`${API_BASE_URL}/generateImage`, {
+    prompt: page.content,
+    aspect_ratio: '1:1',
     user_topic: context?.userTopic
   })
-  return response.data
+  const data = result.data
+  if (data.success) {
+    return { success: true, index: page.index, image_url: data.image_url || data.image_base64 }
+  }
+  return { success: false, index: page.index, error: data.error || '生成失败' }
 }
 
 // 批量重试失败的图片（SSE）
@@ -204,12 +222,23 @@ export async function createHistory(
   outline: { raw: string; pages: Page[] },
   taskId?: string
 ): Promise<{ success: boolean; record_id?: string; error?: string }> {
-  const response = await axios.post(`${API_BASE_URL}/history`, {
-    topic,
+  const key = 'inkink-history'
+  const saved = JSON.parse(localStorage.getItem(key) || '[]')
+  const record_id = randomId('record')
+  const now = new Date().toISOString()
+  saved.unshift({
+    id: record_id,
+    title: topic,
+    created_at: now,
+    updated_at: now,
     outline,
-    task_id: taskId
+    status: 'completed',
+    images: { task_id: taskId || null, generated: [] },
+    thumbnail: null,
+    page_count: outline.pages.length
   })
-  return response.data
+  localStorage.setItem(key, JSON.stringify(saved))
+  return { success: true, record_id }
 }
 
 // 获取历史记录列表
@@ -225,11 +254,22 @@ export async function getHistoryList(
   page_size: number
   total_pages: number
 }> {
-  const params: any = { page, page_size: pageSize }
-  if (status) params.status = status
-
-  const response = await axios.get(`${API_BASE_URL}/history`, { params })
-  return response.data
+  const key = 'inkink-history'
+  const saved: any[] = JSON.parse(localStorage.getItem(key) || '[]')
+  let records = saved
+  if (status) {
+    records = records.filter(r => r.status === status)
+  }
+  const start = (page - 1) * pageSize
+  const paged = records.slice(start, start + pageSize)
+  return {
+    success: true,
+    records: paged,
+    total: records.length,
+    page,
+    page_size: pageSize,
+    total_pages: Math.ceil(records.length / pageSize)
+  }
 }
 
 // 获取历史记录详情
@@ -238,8 +278,11 @@ export async function getHistory(recordId: string): Promise<{
   record?: HistoryDetail
   error?: string
 }> {
-  const response = await axios.get(`${API_BASE_URL}/history/${recordId}`)
-  return response.data
+  const key = 'inkink-history'
+  const saved: any[] = JSON.parse(localStorage.getItem(key) || '[]')
+  const record = saved.find(r => r.id === recordId)
+  if (!record) return { success: false, error: '未找到记录' }
+  return { success: true, record }
 }
 
 // 更新历史记录
@@ -252,8 +295,18 @@ export async function updateHistory(
     thumbnail?: string
   }
 ): Promise<{ success: boolean; error?: string }> {
-  const response = await axios.put(`${API_BASE_URL}/history/${recordId}`, data)
-  return response.data
+  const key = 'inkink-history'
+  const saved: any[] = JSON.parse(localStorage.getItem(key) || '[]')
+  const idx = saved.findIndex(r => r.id === recordId)
+  if (idx === -1) return { success: false, error: '未找到记录' }
+  const now = new Date().toISOString()
+  saved[idx] = {
+    ...saved[idx],
+    ...data,
+    updated_at: now
+  }
+  localStorage.setItem(key, JSON.stringify(saved))
+  return { success: true }
 }
 
 // 删除历史记录
@@ -261,8 +314,11 @@ export async function deleteHistory(recordId: string): Promise<{
   success: boolean
   error?: string
 }> {
-  const response = await axios.delete(`${API_BASE_URL}/history/${recordId}`)
-  return response.data
+  const key = 'inkink-history'
+  const saved: any[] = JSON.parse(localStorage.getItem(key) || '[]')
+  const filtered = saved.filter(r => r.id !== recordId)
+  localStorage.setItem(key, JSON.stringify(filtered))
+  return { success: true }
 }
 
 // 搜索历史记录
@@ -270,10 +326,11 @@ export async function searchHistory(keyword: string): Promise<{
   success: boolean
   records: HistoryRecord[]
 }> {
-  const response = await axios.get(`${API_BASE_URL}/history/search`, {
-    params: { keyword }
-  })
-  return response.data
+  const key = 'inkink-history'
+  const saved: any[] = JSON.parse(localStorage.getItem(key) || '[]')
+  const lower = keyword.toLowerCase()
+  const records = saved.filter((r) => r.title?.toLowerCase().includes(lower))
+  return { success: true, records }
 }
 
 // 获取统计信息
@@ -282,8 +339,13 @@ export async function getHistoryStats(): Promise<{
   total: number
   by_status: Record<string, number>
 }> {
-  const response = await axios.get(`${API_BASE_URL}/history/stats`)
-  return response.data
+  const key = 'inkink-history'
+  const saved: any[] = JSON.parse(localStorage.getItem(key) || '[]')
+  const by_status: Record<string, number> = {}
+  saved.forEach((r) => {
+    by_status[r.status] = (by_status[r.status] || 0) + 1
+  })
+  return { success: true, total: saved.length, by_status }
 }
 
 // 使用 POST 方式生成图片（更可靠）
@@ -300,7 +362,7 @@ export async function generateImagesPost(
   userTopic?: string
 ) {
   try {
-    // 将用户图片转换为 base64
+    const task = taskId || randomId('task')
     let userImagesBase64: string[] = []
     if (userImages && userImages.length > 0) {
       userImagesBase64 = await Promise.all(
@@ -315,72 +377,32 @@ export async function generateImagesPost(
       )
     }
 
-    const response = await fetch(`${API_BASE_URL}/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        pages,
-        task_id: taskId,
-        full_outline: fullOutline,
-        user_images: userImagesBase64.length > 0 ? userImagesBase64 : undefined,
-        user_topic: userTopic || ''
-      })
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-
-    const reader = response.body?.getReader()
-    if (!reader) {
-      throw new Error('无法读取响应流')
-    }
-
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (!line.trim()) continue
-
-        const [eventLine, dataLine] = line.split('\n')
-        if (!eventLine || !dataLine) continue
-
-        const eventType = eventLine.replace('event: ', '').trim()
-        const eventData = dataLine.replace('data: ', '').trim()
-
-        try {
-          const data = JSON.parse(eventData)
-
-          switch (eventType) {
-            case 'progress':
-              onProgress(data)
-              break
-            case 'complete':
-              onComplete(data)
-              break
-            case 'error':
-              onError(data)
-              break
-            case 'finish':
-              onFinish(data)
-              break
-          }
-        } catch (e) {
-          console.error('解析 SSE 数据失败:', e)
+    let completed: string[] = []
+    for (const page of pages) {
+      onProgress({ index: page.index, status: 'generating', current: completed.length + 1, total: pages.length })
+      try {
+        const res = await axios.post(`${API_BASE_URL}/generateImage`, {
+          prompt: page.content,
+          aspect_ratio: '1:1',
+          user_topic: userTopic,
+          user_images: userImagesBase64,
+          page_type: page.type,
+          full_outline: fullOutline
+        })
+        const data = res.data
+        if (data.success) {
+          const url = data.image_url || (data.image_base64 ? `data:image/png;base64,${data.image_base64}` : '')
+          completed.push(url)
+          onComplete({ index: page.index, status: 'done', image_url: url })
+        } else {
+          onError({ index: page.index, status: 'error', message: data.error || '生成失败' })
         }
+      } catch (err: any) {
+        onError({ index: page.index, status: 'error', message: err?.message || '生成失败' })
       }
     }
+
+    onFinish({ success: true, task_id: task, images: completed })
   } catch (error) {
     onStreamError(error as Error)
   }
@@ -396,8 +418,7 @@ export async function scanAllTasks(): Promise<{
   results?: any[]
   error?: string
 }> {
-  const response = await axios.post(`${API_BASE_URL}/history/scan-all`)
-  return response.data
+  return { success: true, total_tasks: 0, synced: 0, failed: 0, orphan_tasks: [] }
 }
 
 // ==================== 配置管理 API ====================
