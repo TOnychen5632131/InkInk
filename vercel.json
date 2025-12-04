@@ -1,16 +1,19 @@
 {
   "version": 2,
-  "functions": {
-    "api/**/*.py": {
-      "runtime": "vercel-python@3.11.0"
+  "builds": [
+    { "src": "api/index.py", "use": "@vercel/python" },
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist",
+        "installCommand": "pnpm install --frozen-lockfile",
+        "buildCommand": "pnpm build"
+      }
     }
-  },
-  "buildCommand": "cd frontend && pnpm install --frozen-lockfile && pnpm build",
-  "installCommand": "cd frontend && pnpm install --frozen-lockfile --ignore-scripts",
-  "outputDirectory": "frontend/dist",
+  ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "api/index.py" },
-    { "handle": "filesystem" },
+    { "src": "/api/(.*)", "dest": "/api/index.py" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
