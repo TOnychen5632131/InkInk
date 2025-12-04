@@ -1,7 +1,7 @@
 {
   "version": 2,
   "buildCommand": "cd frontend && pnpm install --frozen-lockfile && pnpm build",
-  "installCommand": "npm install -g pnpm@9.15.0 && cd frontend && pnpm install --frozen-lockfile --ignore-scripts",
+  "installCommand": "cd frontend && pnpm install --frozen-lockfile --ignore-scripts",
   "outputDirectory": "frontend/dist",
   "rewrites": [
     {
