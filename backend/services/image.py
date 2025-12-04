@@ -4,6 +4,7 @@ import os
 import uuid
 import time
 import threading
+import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Any, Generator, List, Optional, Tuple
 from backend.config import Config
@@ -53,11 +54,7 @@ class ImageService:
         self.prompt_template_short = self._load_prompt_template(short=True)
 
         # 历史记录根目录
-        self.history_root_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "history"
-        )
-        os.makedirs(self.history_root_dir, exist_ok=True)
+        self.history_root_dir = str(Config.get_history_dir())
 
         # 当前任务的输出目录（每个任务一个子文件夹）
         self.current_task_dir = None
@@ -80,6 +77,60 @@ class ImageService:
             return ""
         with open(prompt_path, "r", encoding="utf-8") as f:
             return f.read()
+
+    def _build_prompt(self, page_content: str, page_type: str, full_outline: str, user_topic: str) -> str:
+        """根据配置选择短/长模板构建 prompt"""
+        if self.use_short_prompt and self.prompt_template_short:
+            return self.prompt_template_short.format(
+                page_content=page_content,
+                page_type=page_type
+            )
+
+        return self.prompt_template.format(
+            page_content=page_content,
+            page_type=page_type,
+            full_outline=full_outline,
+            user_topic=user_topic if user_topic else "未提供"
+        )
+
+    def generate_image_base64(
+        self,
+        page_content: str,
+        page_type: str = "content",
+        aspect_ratio: Optional[str] = None,
+        full_outline: str = "",
+        user_images: Optional[List[bytes]] = None,
+        user_topic: str = ""
+    ) -> str:
+        """单张图片生成，直接返回 base64，适配无持久化的 Serverless 场景"""
+        prompt = self._build_prompt(page_content, page_type, full_outline, user_topic)
+
+        if self.provider_config.get('type') == 'google_genai':
+            image_data = self.generator.generate_image(
+                prompt=prompt,
+                aspect_ratio=aspect_ratio or self.provider_config.get('default_aspect_ratio', '3:4'),
+                temperature=self.provider_config.get('temperature', 1.0),
+                model=self.provider_config.get('model', 'gemini-3-pro-image-preview'),
+                reference_image=None,
+            )
+        elif self.provider_config.get('type') == 'image_api':
+            reference_images = user_images if user_images else None
+            image_data = self.generator.generate_image(
+                prompt=prompt,
+                aspect_ratio=aspect_ratio or self.provider_config.get('default_aspect_ratio', '3:4'),
+                temperature=self.provider_config.get('temperature', 1.0),
+                model=self.provider_config.get('model', 'nano-banana-2'),
+                reference_images=reference_images,
+            )
+        else:
+            image_data = self.generator.generate_image(
+                prompt=prompt,
+                size=self.provider_config.get('default_size', '1024x1024'),
+                model=self.provider_config.get('model'),
+                quality=self.provider_config.get('quality', 'standard'),
+            )
+
+        return base64.b64encode(image_data).decode("utf-8")
 
     def _save_image(self, image_data: bytes, filename: str, task_dir: str = None) -> str:
         """
@@ -149,21 +200,12 @@ class ImageService:
                 logger.debug(f"生成图片 [{index}]: type={page_type}, attempt={attempt + 1}/{max_retries}")
 
                 # 根据配置选择模板（短 prompt 或完整 prompt）
-                if self.use_short_prompt and self.prompt_template_short:
-                    # 短 prompt 模式：只包含页面类型和内容
-                    prompt = self.prompt_template_short.format(
-                        page_content=page_content,
-                        page_type=page_type
-                    )
-                    logger.debug(f"  使用短 prompt 模式 ({len(prompt)} 字符)")
-                else:
-                    # 完整 prompt 模式：包含大纲和用户需求
-                    prompt = self.prompt_template.format(
-                        page_content=page_content,
-                        page_type=page_type,
-                        full_outline=full_outline,
-                        user_topic=user_topic if user_topic else "未提供"
-                    )
+                prompt = self._build_prompt(
+                    page_content=page_content,
+                    page_type=page_type,
+                    full_outline=full_outline,
+                    user_topic=user_topic
+                )
 
                 # 调用生成器生成图片
                 if self.provider_config.get('type') == 'google_genai':

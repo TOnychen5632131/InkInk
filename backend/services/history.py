@@ -4,15 +4,12 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from pathlib import Path
+from backend.config import Config
 
 
 class HistoryService:
     def __init__(self):
-        self.history_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "history"
-        )
-        os.makedirs(self.history_dir, exist_ok=True)
+        self.history_dir = str(Config.get_history_dir())
 
         self.index_file = os.path.join(self.history_dir, "index.json")
         self._init_index()

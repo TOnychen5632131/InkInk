@@ -1,4 +1,5 @@
 import logging
+import os
 import yaml
 from pathlib import Path
 
@@ -6,22 +7,70 @@ logger = logging.getLogger(__name__)
 
 
 class Config:
-    DEBUG = True
-    HOST = '0.0.0.0'
-    PORT = 12398
-    CORS_ORIGINS = ['http://localhost:5173', 'http://localhost:3000']
-    OUTPUT_DIR = 'output'
+    DEBUG = os.getenv("DEBUG", "true").lower() == "true"
+    HOST = os.getenv("HOST", "0.0.0.0")
+    PORT = int(os.getenv("PORT", "12398"))
+    CORS_ORIGINS = [
+        origin.strip() for origin in os.getenv(
+            "CORS_ORIGINS",
+            "http://localhost:5173,http://localhost:3000"
+        ).split(",") if origin.strip()
+    ]
+    OUTPUT_DIR = os.getenv("OUTPUT_DIR", "output")
+    DATA_DIR = os.getenv("APP_DATA_DIR")
 
     _image_providers_config = None
     _text_providers_config = None
+    _resolved_history_dir: Path | None = None
+
+    @classmethod
+    def get_history_dir(cls) -> Path:
+        """
+        返回可写的历史/输出目录。
+        - 优先 APP_DATA_DIR 环境变量
+        - 其次项目内 history 目录（若可写）
+        - 最后回退到 /tmp/inkink-history
+        """
+        if cls._resolved_history_dir is not None:
+            return cls._resolved_history_dir
+
+        candidates = []
+        if cls.DATA_DIR:
+            candidates.append(Path(cls.DATA_DIR))
+        candidates.append(Path(__file__).parent.parent / "history")
+        candidates.append(Path("/tmp/inkink-history"))
+
+        for path in candidates:
+            try:
+                path.mkdir(parents=True, exist_ok=True)
+                cls._resolved_history_dir = path
+                logger.info(f"历史目录使用: {path}")
+                break
+            except Exception as e:
+                logger.warning(f"历史目录不可写: {path} ({e})")
+
+        if cls._resolved_history_dir is None:
+            raise RuntimeError("无法创建历史目录，请检查权限或 APP_DATA_DIR 设置")
+
+        return cls._resolved_history_dir
 
     @classmethod
     def load_image_providers_config(cls):
         if cls._image_providers_config is not None:
             return cls._image_providers_config
 
+        env_yaml = os.getenv("IMAGE_PROVIDERS_YAML")
         config_path = Path(__file__).parent.parent / 'image_providers.yaml'
-        logger.debug(f"加载图片服务商配置: {config_path}")
+        logger.debug(f"加载图片服务商配置: {config_path} (或 IMAGE_PROVIDERS_YAML 环境变量)")
+
+        if env_yaml:
+            try:
+                cls._image_providers_config = yaml.safe_load(env_yaml) or {}
+                logger.debug("图片配置加载成功（来自环境变量）")
+                return cls._image_providers_config
+            except yaml.YAMLError as e:
+                logger.error(f"图片配置环境变量 YAML 格式错误: {e}")
+                raise ValueError(f"IMAGE_PROVIDERS_YAML 解析失败: {e}")
 
         if not config_path.exists():
             logger.warning(f"图片配置文件不存在: {config_path}，使用默认配置")
@@ -54,8 +103,18 @@ class Config:
         if cls._text_providers_config is not None:
             return cls._text_providers_config
 
+        env_yaml = os.getenv("TEXT_PROVIDERS_YAML")
         config_path = Path(__file__).parent.parent / 'text_providers.yaml'
-        logger.debug(f"加载文本服务商配置: {config_path}")
+        logger.debug(f"加载文本服务商配置: {config_path} (或 TEXT_PROVIDERS_YAML 环境变量)")
+
+        if env_yaml:
+            try:
+                cls._text_providers_config = yaml.safe_load(env_yaml) or {}
+                logger.debug("文本配置加载成功（来自环境变量）")
+                return cls._text_providers_config
+            except yaml.YAMLError as e:
+                logger.error(f"文本配置环境变量 YAML 格式错误: {e}")
+                raise ValueError(f"TEXT_PROVIDERS_YAML 解析失败: {e}")
 
         if not config_path.exists():
             logger.warning(f"文本配置文件不存在: {config_path}，使用默认配置")

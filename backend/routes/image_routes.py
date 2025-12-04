@@ -15,6 +15,7 @@ import base64
 import logging
 from flask import Blueprint, request, jsonify, Response, send_file
 from backend.services.image import get_image_service
+from backend.config import Config
 from .utils import log_request, log_error
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,57 @@ def create_image_blueprint():
                 "error": f"图片生成异常。\n错误详情: {error_msg}\n建议：检查图片生成服务配置和后端日志"
             }), 500
 
+    @image_bp.route('/generateImage', methods=['POST'])
+    def generate_image_base64():
+        """
+        单张图片生成，直接返回 base64（适配前端逐页生成和 Serverless 场景）
+
+        请求体：
+        - prompt: 必填，页面内容
+        - page_type: 可选，cover/content/summary
+        - aspect_ratio: 可选，默认 3:4
+        - full_outline: 可选，完整大纲文本
+        - user_topic: 可选，用户输入主题
+        - user_images: 可选，base64 的参考图片列表
+        """
+        try:
+            data = request.get_json() or {}
+            prompt = data.get('prompt')
+            if not prompt:
+                return jsonify({"success": False, "error": "prompt 不能为空"}), 400
+
+            user_images = _parse_base64_images(data.get('user_images', []))
+            page_type = data.get('page_type', 'content')
+            aspect_ratio = data.get('aspect_ratio')
+            full_outline = data.get('full_outline', '')
+            user_topic = data.get('user_topic', '')
+
+            log_request('/generateImage', {
+                "page_type": page_type,
+                "has_user_images": bool(user_images),
+                "full_outline_len": len(full_outline) if full_outline else 0
+            })
+
+            image_service = get_image_service()
+            image_b64 = image_service.generate_image_base64(
+                page_content=prompt,
+                page_type=page_type,
+                aspect_ratio=aspect_ratio,
+                full_outline=full_outline,
+                user_images=user_images if user_images else None,
+                user_topic=user_topic
+            )
+
+            data_url = f"data:image/png;base64,{image_b64}"
+            return jsonify({
+                "success": True,
+                "image_base64": image_b64,
+                "image_url": data_url
+            })
+        except Exception as e:
+            log_error('/generateImage', e)
+            return jsonify({"success": False, "error": str(e)}), 500
+
     # ==================== 图片获取 ====================
 
     @image_bp.route('/images/<task_id>/<filename>', methods=['GET'])
@@ -127,10 +179,7 @@ def create_image_blueprint():
             thumbnail = request.args.get('thumbnail', 'true').lower() == 'true'
 
             # 构建 history 目录路径
-            history_root = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                "history"
-            )
+            history_root = str(Config.get_history_dir())
 
             if thumbnail:
                 # 尝试返回缩略图

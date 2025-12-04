@@ -1,14 +1,14 @@
 :root {
-  /* 配色方案 - 现代简约风格 */
+  /* 配色方案 - LuminaForge 清爽光感 */
   --bg-body: #F4F5F7;
   --bg-sidebar: #FFFFFF;
   --bg-card: #FFFFFF;
   
-  --primary: #FF2442; /* 小红书红 */
-  --primary-hover: #FF4D6A;
-  --primary-active: #D91C36;
-  --primary-light: #FFF0F2;
-  --primary-fade: rgba(255, 36, 66, 0.08);
+  --primary: #0F9B8E;
+  --primary-hover: #13B5A3;
+  --primary-active: #0C7C72;
+  --primary-light: #E6F6F3;
+  --primary-fade: rgba(19, 181, 163, 0.1);
   
   --text-main: #333333;
   --text-sub: #666666;

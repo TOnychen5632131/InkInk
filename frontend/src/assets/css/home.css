@@ -13,7 +13,7 @@
 .brand-pill {
   display: inline-block;
   padding: 6px 16px;
-  background: rgba(255, 36, 66, 0.08);
+  background: var(--primary-fade);
   color: var(--primary);
   border-radius: 100px;
   font-size: 13px;
@@ -109,7 +109,7 @@
 
 .tool-btn.active {
   color: var(--primary);
-  background: rgba(255, 36, 66, 0.08);
+  background: var(--primary-fade);
 }
 
 .badge-count {
@@ -148,7 +148,7 @@
 .generate-btn:hover {
   background: var(--primary-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(255, 36, 66, 0.2);
+  box-shadow: 0 4px 12px rgba(19, 181, 163, 0.2);
 }
 
 .generate-btn:disabled {
@@ -342,8 +342,8 @@
 
 .recent-item:hover .recent-icon {
   color: var(--primary);
-  border-color: rgba(255, 36, 66, 0.2);
-  background: #FFF0F2;
+  border-color: rgba(19, 181, 163, 0.25);
+  background: var(--primary-light);
 }
 
 .recent-info {
@@ -415,9 +415,9 @@
   font-family: 'Inter', monospace;
 }
 
-.trend-rank.rank-1 { color: #FF2442; }
-.trend-rank.rank-2 { color: #FF6B81; }
-.trend-rank.rank-3 { color: #FF9CA8; }
+.trend-rank.rank-1 { color: var(--primary); }
+.trend-rank.rank-2 { color: #4FCDBF; }
+.trend-rank.rank-3 { color: #9AE6DA; }
 
 .trend-name {
   font-weight: 500;

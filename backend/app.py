@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 from pathlib import Path
 from flask import Flask, send_from_directory
@@ -104,8 +105,11 @@ def _validate_config_on_startup(logger):
     logger.info("📋 检查配置文件...")
 
     # 检查 text_providers.yaml
+    text_env = os.getenv("TEXT_PROVIDERS_YAML")
     text_config_path = Path(__file__).parent.parent / 'text_providers.yaml'
-    if text_config_path.exists():
+    if text_env:
+        logger.info("✅ 文本生成配置: 来自环境变量 TEXT_PROVIDERS_YAML")
+    elif text_config_path.exists():
         try:
             with open(text_config_path, 'r', encoding='utf-8') as f:
                 text_config = yaml.safe_load(f) or {}
@@ -126,8 +130,11 @@ def _validate_config_on_startup(logger):
         logger.warning("⚠️  text_providers.yaml 不存在，将使用默认配置")
 
     # 检查 image_providers.yaml
+    image_env = os.getenv("IMAGE_PROVIDERS_YAML")
     image_config_path = Path(__file__).parent.parent / 'image_providers.yaml'
-    if image_config_path.exists():
+    if image_env:
+        logger.info("✅ 图片生成配置: 来自环境变量 IMAGE_PROVIDERS_YAML")
+    elif image_config_path.exists():
         try:
             with open(image_config_path, 'r', encoding='utf-8') as f:
                 image_config = yaml.safe_load(f) or {}

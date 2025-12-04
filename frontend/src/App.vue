@@ -3,8 +3,8 @@
     <!-- 侧边栏 Sidebar -->
     <aside class="layout-sidebar">
       <div class="logo-area">
-        <img src="/logo.png" alt="DesignPost AI" class="logo-icon" />
-        <span class="logo-text">DesignPost AI</span>
+        <img src="/logo.png" alt="LuminaForge AI" class="logo-icon" />
+        <span class="logo-text">LuminaForge AI</span>
       </div>
       
       <nav class="nav-menu">
@@ -24,10 +24,10 @@
       
       <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border-color);">
         <div style="display: flex; align-items: center; gap: 10px;">
-          <img src="/logo.png" alt="默子" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover;" />
+          <img src="/logo.png" alt="LuminaForge AI" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover;" />
           <div>
-            <div style="font-size: 14px; font-weight: 600;">默子</div>
-            <div style="font-size: 12px; color: var(--text-sub);">mozi</div>
+            <div style="font-size: 14px; font-weight: 600;">Lumina 团队</div>
+            <div style="font-size: 12px; color: var(--text-sub);">lumina</div>
           </div>
         </div>
       </div>
@@ -42,7 +42,7 @@
         <footer v-if="route.path !== '/'" class="global-footer">
           <div class="footer-content">
             <div class="footer-text">
-              © 2025 DesignPost AI
+              © 2025 LuminaForge AI
             </div>
             <div class="footer-license">
               Licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>
