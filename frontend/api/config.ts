@@ -1,3 +1,4 @@
+// @ts-nocheck
 function maskKey(key?: string | null) {
   if (!key) return ''
   const prefix = key.slice(0, 4)

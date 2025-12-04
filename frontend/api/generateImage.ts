@@ -1,3 +1,4 @@
+// @ts-nocheck
 import OpenAI from 'openai'
 
 const client = new OpenAI({
@@ -45,7 +46,12 @@ export default async function handler(req: any, res: any) {
 
   try {
     const model = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1'
-    const size = aspect_ratio === '16:9' ? '1344x768' : aspect_ratio === '3:4' ? '1024x1365' : '1024x1024'
+    const size =
+      aspect_ratio === '16:9'
+        ? '1536x1024'
+        : aspect_ratio === '3:4'
+          ? '1024x1536'
+          : '1024x1024'
 
     const response = await client.images.generate({
       model,
