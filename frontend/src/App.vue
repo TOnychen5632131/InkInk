@@ -3,8 +3,8 @@
     <!-- 侧边栏 Sidebar -->
     <aside class="layout-sidebar">
       <div class="logo-area">
-        <img src="/logo.png" alt="红墨" class="logo-icon" />
-        <span class="logo-text">红墨</span>
+        <img src="/logo.png" alt="DesignPost AI" class="logo-icon" />
+        <span class="logo-text">DesignPost AI</span>
       </div>
       
       <nav class="nav-menu">
@@ -42,7 +42,7 @@
         <footer v-if="route.path !== '/'" class="global-footer">
           <div class="footer-content">
             <div class="footer-text">
-              © 2025 <a href="https://github.com/HisMax/RedInk" target="_blank" rel="noopener noreferrer">RedInk</a> by 默子 (Histone)
+              © 2025 DesignPost AI
             </div>
             <div class="footer-license">
               Licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-NC-SA 4.0</a>
