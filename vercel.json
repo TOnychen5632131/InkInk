@@ -12,6 +12,17 @@
       }
     }
   ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self' 'unsafe-eval'; connect-src 'self';"
+        }
+      ]
+    }
+  ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/index.py" },
     { "handle": "filesystem" },
