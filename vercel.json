@@ -1,12 +1,12 @@
 {
   "version": 2,
   "functions": {
-    "api/index.py": {
-      "runtime": "python3.11"
+    "api/**/*.py": {
+      "runtime": "vercel-python@3.11"
     }
   },
   "buildCommand": "cd frontend && pnpm install --frozen-lockfile && pnpm build",
-  "installCommand": "pnpm install --ignore-scripts",
+  "installCommand": "cd frontend && pnpm install --frozen-lockfile --ignore-scripts",
   "outputDirectory": "frontend/dist",
   "routes": [
     { "src": "/api/(.*)", "dest": "api/index.py" },
