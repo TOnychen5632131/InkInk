@@ -1,22 +1,28 @@
 {
   "version": 2,
-  "buildCommand": "cd frontend && pnpm install && pnpm build",
-  "installCommand": "cd frontend && pnpm install",
-  "outputDirectory": "frontend/dist",
-  "framework": "vite",
-  "functions": {
-    "api/**/*.{js,ts}": {
-      "runtime": "edge"
-    }
-  },
-  "rewrites": [
+  "builds": [
     {
-      "source": "/api/(.*)",
-      "destination": "/frontend/api/$1"
+      "src": "frontend/api/**/*.{ts,js}",
+      "use": "@vercel/edge-functions"
     },
     {
-      "source": "/(.*)",
-      "destination": "/frontend/$1"
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist",
+        "installCommand": "pnpm install",
+        "buildCommand": "pnpm build"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/frontend/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend/dist/$1"
     }
   ]
 }
