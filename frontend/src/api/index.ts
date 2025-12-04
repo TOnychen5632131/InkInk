@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_BASE_URL = '/api'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
 function randomId(prefix: string) {
   return `${prefix}_${Math.random().toString(16).slice(2)}`
@@ -117,70 +117,28 @@ export async function retryFailedImages(
   onFinish: (event: { success: boolean; total: number; completed: number; failed: number }) => void,
   onStreamError: (error: Error) => void
 ) {
+  let completed = 0
+  let failed = 0
+
   try {
-    const response = await fetch(`${API_BASE_URL}/retry-failed`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        task_id: taskId,
-        pages
-      })
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-
-    const reader = response.body?.getReader()
-    if (!reader) {
-      throw new Error('无法读取响应流')
-    }
-
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (!line.trim()) continue
-
-        const [eventLine, dataLine] = line.split('\n')
-        if (!eventLine || !dataLine) continue
-
-        const eventType = eventLine.replace('event: ', '').trim()
-        const eventData = dataLine.replace('data: ', '').trim()
-
-        try {
-          const data = JSON.parse(eventData)
-
-          switch (eventType) {
-            case 'retry_start':
-              onProgress({ index: -1, status: 'generating', message: data.message })
-              break
-            case 'complete':
-              onComplete(data)
-              break
-            case 'error':
-              onError(data)
-              break
-            case 'retry_finish':
-              onFinish(data)
-              break
-          }
-        } catch (e) {
-          console.error('解析 SSE 数据失败:', e)
+    for (const page of pages) {
+      onProgress({ index: page.index, status: 'generating' })
+      try {
+        const result = await regenerateImage(taskId, page)
+        if (result.success && result.image_url) {
+          completed += 1
+          onComplete({ index: page.index, status: 'done', image_url: result.image_url })
+        } else {
+          failed += 1
+          onError({ index: page.index, status: 'error', message: result.error || '生成失败' })
         }
+      } catch (err: any) {
+        failed += 1
+        onError({ index: page.index, status: 'error', message: err?.message || '生成失败' })
       }
     }
+
+    onFinish({ success: failed === 0, total: pages.length, completed, failed })
   } catch (error) {
     onStreamError(error as Error)
   }
